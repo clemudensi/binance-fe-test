@@ -1,12 +1,14 @@
 (async function () {
   const seriesData = await fetchSeriesData()
-  candleChart(seriesData, {
-      y:{min:0, max:0,steps:5,label:"price"},
-      x:{min:1, max:24, steps:23,label:"time"}
-    })
-    console.log('seriesData: ', seriesData)
+  let chartData = []
     subscribe(data => { // data: [time, open, high, low, close]
-      console.log('subscribe: ', data)
+      chartData.push(data)
+      // Not showing more than 100 candle-sticks
+      chartData.length > 100 ? chartData.splice(0, 1) : chartData
+      candleChart(chartData, {
+        y:{min:0, max:0,steps:5,label:"price"},
+        x:{min:1, max:chartData.length, steps:chartData.length -1,label:"time"}
+      })
     })
 
   // [time, open, high, low, close][]
@@ -41,52 +43,61 @@ function candleChart(data, chartIndex ) {
     y:{min: chartIndex.y.min, max: chartIndex.y.max,steps: chartIndex.y.steps,label: chartIndex.y.label },
     x:{min: chartIndex.x.min, max: chartIndex.x.max, steps: chartIndex.x.steps,label: chartIndex.x.label }
   };
-  let stockData;
   const CHART_PADDING = 85;
-  let wid;
-  let hei
 
+  const ctx = document.getElementById("kline");
+  const draw = ctx.getContext("2d");
+  let wid = ctx.width;
+  let hei = ctx.height;
 
   (function initCanvas(){
-    const ctx = document.getElementById("kline");
-    wid = ctx.width;
-    hei = ctx.height;
-    const context = ctx.getContext("2d");
-    context.font = "8pt Verdana, sans-serif";
-    context.fillStyle = "#999999";
-    context.stroke();
-    addStock(context, data);
+
+    draw.font = "8pt Verdana, sans-serif";
+    draw.fillStyle = "#999999";
+    draw.stroke();
+    addStock(data);
   })()
 
   function drawYAxis(data){
-    const ctx = document.getElementById("kline");
-    const draw = ctx.getContext("2d");
-
     const maxRow = data.map(index => index[2])
-    const minRow = data.map(index => index[2])
+    const minRow = data.map(index => index[3])
     const max = Math.max.apply(null, maxRow);
     const min = Math.min.apply(null, minRow);
 
-    chartInfo.y.max = max
-    chartInfo.y.min = min
+    chartInfo.y.max = data[0][2]
+    chartInfo.y.min = data[0][3]
+
+    // Update new price low
+    if(min < chartInfo.y.min){
+      chartInfo.y.min = min;
+    } else {
+      return chartInfo.y.max
+    }
+
+    // Update new price high
+    if(max > chartInfo.y.max){
+      chartInfo.y.max = max;
+    } else {
+      return chartInfo.y.max
+    }
 
     draw.moveTo(ctx.width - 80, 0);
     draw.lineTo(ctx.width - 80, chartInfo.y.max );
     draw.strokeStyle = "#999999"
-    draw.lineWidth = 3;
+    draw.lineWidth = 1.5;
     draw.stroke();
   }
 
-  function addStock(context, data){
+  function addStock(data){
     let openY;
     let closeYOffset;
     let highY;
     let lowY;
     let currentX;
 
+    draw.clearRect(0, 0, ctx.width, ctx.height);
     drawYAxis(data)
-    const ctx = document.getElementById("kline");
-    const elementWidth =(wid-CHART_PADDING*2)/ data.length;
+    const elementWidth =(wid - CHART_PADDING * 2)/ data.length;
     const startY = CHART_PADDING;
     const endY = hei-CHART_PADDING;
     const chartHeight = endY-startY;
@@ -101,37 +112,38 @@ function candleChart(data, chartIndex ) {
     // Add price point to chart
     for(let i = 0; i < steps; i++){
       currentY = startY + (i/steps) * chartHeight;
-      context.moveTo(wid-CHART_PADDING, currentY );
-      context.lineTo(ctx.clientWidth, currentY);
-      context.fillText(`-- ${yData.min+stepSize1*(steps-i)}`, ctx.width-80, currentY+4);
+      draw.moveTo(wid-CHART_PADDING, currentY );
+      draw.lineTo(ctx.width, currentY);
+      draw.fillText(`- ${parseInt(yData.min)+stepSize1*(steps-i)}`, ctx.width-80, currentY+4);
     }
     currentY = startY + chartHeight;
-    context.moveTo(CHART_PADDING, currentY );
-    context.lineTo(CHART_PADDING/2,currentY);
-    context.fillText(`-- ${yData.min}`, ctx.width-80, currentY-3);
+    draw.moveTo(CHART_PADDING, currentY );
+    draw.lineTo(CHART_PADDING/2,currentY);
+    draw.fillText(`- ${parseInt(yData.min)}`, ctx.width-80, currentY-3);
 
+    // draw candlestick
     for(let i = 0; i < data.length; i++){
       openY = (data[i][1]-chartInfo.y.min)*stepSize;
       closeYOffset = (data[i][1] - data[i][4])*stepSize;
       highY = (data[i][2]-chartInfo.y.min)*stepSize;
-      lowY =(data[i][3]-chartInfo.y.min)*stepSize;
+      lowY =(data[i][3] - chartInfo.y.min)*stepSize;
 
       //show upward and downward price change
-      context.beginPath();
-      currentX = CHART_PADDING +elementWidth*(i+.5);
-      context.moveTo(currentX,endY-highY);
-      context.lineTo(currentX,endY-lowY);
-      context.rect(CHART_PADDING +elementWidth*i ,endY-openY,elementWidth,closeYOffset);
+      draw.beginPath();
+      currentX = CHART_PADDING + elementWidth*(i+.5);
+      draw.moveTo(currentX - 5,endY - highY);
+      draw.lineTo(currentX - 5,endY - lowY);
+      draw.rect(CHART_PADDING + elementWidth * i ,endY - openY, elementWidth - 10, closeYOffset);
 
-      context.fillStyle = closeYOffset < 0 ? (function () {
-        context.strokeStyle = "#6fe074";
+      draw.fillStyle = closeYOffset < 0 ? (function () {
+        draw.strokeStyle = "#6fe074";
         return "#6fe074"
       })() : (function () {
-        context.strokeStyle = "#fa5f55";
+        draw.strokeStyle = "#fa5f55";
         return "#fa5f55"
       })() ;
-      context.stroke();
-      context.fillRect(CHART_PADDING +elementWidth*i ,endY-openY,elementWidth,closeYOffset);
+      draw.stroke();
+      draw.fillRect(CHART_PADDING + elementWidth * i , endY - openY, elementWidth - 10, closeYOffset);
     }
   }
 }
